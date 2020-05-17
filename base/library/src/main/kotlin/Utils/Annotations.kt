@@ -6,7 +6,7 @@ import com.google.inject.BindingAnnotation
     AnnotationTarget.CONSTRUCTOR,
     AnnotationTarget.VALUE_PARAMETER,
     AnnotationTarget.PROPERTY,
-    AnnotationTarget.TYPE
+    AnnotationTarget.TYPE, AnnotationTarget.FUNCTION
 )
 @Retention(AnnotationRetention.RUNTIME)
 @BindingAnnotation
@@ -17,7 +17,7 @@ annotation class torrentStorage
     AnnotationTarget.CONSTRUCTOR,
     AnnotationTarget.VALUE_PARAMETER,
     AnnotationTarget.PROPERTY,
-    AnnotationTarget.TYPE
+    AnnotationTarget.TYPE, AnnotationTarget.FUNCTION
 )
 @Retention(AnnotationRetention.RUNTIME)
 @BindingAnnotation
@@ -27,7 +27,7 @@ annotation class statsStorage
     AnnotationTarget.CONSTRUCTOR,
     AnnotationTarget.VALUE_PARAMETER,
     AnnotationTarget.PROPERTY,
-    AnnotationTarget.TYPE
+    AnnotationTarget.TYPE, AnnotationTarget.FUNCTION
 )
 @Retention(AnnotationRetention.RUNTIME)
 @BindingAnnotation

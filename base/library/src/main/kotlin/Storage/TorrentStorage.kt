@@ -11,8 +11,8 @@ import com.google.inject.Inject
 class TorrentStorage @Inject constructor(
     @torrentStorage private val torrentStorage: SecureStorage
 ) : Torrent {
-    override fun addTorrent(infohash: String, torrentData: Any) {
-        torrentStorage.write(infohash.toByteArray(), Conversion.toByteArray(torrentData) as ByteArray)
+    override fun addTorrent(infohash: String, torrentData: ByteArray) {
+        torrentStorage.write(infohash.toByteArray(), torrentData)
 
     }
     override fun removeTorrent(infohash:String,unloadValue:String) {
@@ -20,11 +20,11 @@ class TorrentStorage @Inject constructor(
     }
 
     override fun getTorrentData(infohash: String): ByteArray? {
-        return torrentStorage.read(infohash.toByteArray())
+        return torrentStorage.read(infohash.toByteArray(Charsets.UTF_8))
 
     }
 
-    override fun updateAnnounceList(infohash: String, announceList: List<List<Any>>) {
+    override fun updateAnnounceList(infohash: String, announceList: List<List<String>>) {
         val retVlaue= torrentStorage.read(infohash.toByteArray())
         if(retVlaue!=null && fromByteArray(retVlaue) as String!="unloaded" ) {
             torrentStorage.write(infohash.toByteArray(Charsets.UTF_8), toByteArray(announceList) as ByteArray)

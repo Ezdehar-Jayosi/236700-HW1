@@ -10,19 +10,27 @@ import com.google.inject.Singleton
 import dev.misfitlabs.kotlinguice4.KotlinModule
 import il.ac.technion.cs.softwaredesign.storage.SecureStorage
 import il.ac.technion.cs.softwaredesign.storage.SecureStorageFactory
+//import il.ac.technion.cs.softwaredesign.storage.impl.SecureStorageFactoryImpl
+//import il.ac.technion.cs.softwaredesign.storage.impl.SecureStorageImpl
 
 class LibraryModule : KotlinModule() {
     override fun configure() {
         bind<Peer>().to<PeerStorage>()
         bind<Statistics>().to<StatisticsStorage>()
         bind<Torrent>().to<TorrentStorage>()
+        //TODO: super mega important: add import for softwaredesign.storage.impl for staff implementation
+        //TODO: remove??? TestStorage/TestStorageFactory ??
+        bind<SecureStorageFactory>().toInstance(SecureStorageFactoryImpl())
+        bind<SecureStorage>().toInstance(SecureStorageImpl())
+
     }
 
     //Binding with annotations(tutorial on Guice )
     @Provides
     @Singleton
     @Inject
-    fun provideTorrentStorage(factory: SecureStorageFactory): @torrentStorage SecureStorage {
+    @torrentStorage
+    fun provideTorrentStorage(factory: SecureStorageFactory):  SecureStorage {
         return factory.open("torrent".toByteArray())
 
     }
@@ -30,14 +38,16 @@ class LibraryModule : KotlinModule() {
     @Provides
     @Singleton
     @Inject
-    fun provideStatsStorage(factory: SecureStorageFactory): @statsStorage SecureStorage {
+    @statsStorage
+    fun provideStatsStorage(factory: SecureStorageFactory):  SecureStorage {
         return factory.open("statistics".toByteArray())
     }
 
     @Provides
     @Singleton
     @Inject
-    fun providePeerStorage(factory: SecureStorageFactory): @peerStorage SecureStorage {
+    @peerStorage
+    fun providePeerStorage(factory: SecureStorageFactory):  SecureStorage {
         return factory.open("peers".toByteArray())
     }
 }

@@ -61,7 +61,7 @@ object Bencoding {
                 val char: Char = obj[itr].toChar()
                 if (char == 'e') return Pair(list_out, itr + 1)
                 val valueItrPair = DecodeObjectInner(obj, itr)
-                if(valueItrPair.first==null) return valueItrPair
+                if (valueItrPair.first == null) return valueItrPair
                 list_out.add(valueItrPair.first)
                 itr = valueItrPair.second
             }
@@ -95,7 +95,7 @@ object Bencoding {
                 if (char == 'e') return Pair(dict, itr + 1)
 
                 val keyItrPair = DecodeObjectInner(obj, itr)
-                if(keyItrPair.first==null) return keyItrPair
+                if (keyItrPair.first == null) return keyItrPair
                 itr = keyItrPair.second
                 if (keyItrPair.first.toString() == "info") {
                     info_indx_first = itr
@@ -125,17 +125,21 @@ object Bencoding {
                     }
                     val stringEnd = itr + str_len
                     val str = StringBuilder()
-                    itr++
-                    while (itr <= stringEnd) {
-                        str.append(obj[itr].toChar())
-                        itr++
-
-                    }
+//                    itr++
+//                    while (itr <= stringEnd) {
+//                        str.append(obj[itr].toChar())
+//                        itr++
+//
+//                    }
+                    //TODO: convert obj to string then take substring?
+                    //possible for characters to be MORE THAN ONE BYTE???
+                    str.append((obj.copyOfRange(itr + 1, stringEnd+1)).toString(Charsets.UTF_8))
+                    itr = stringEnd + 1
                     //the pieces value is encoded differently, so we handle the decoding differently
                     if (str.toString() == "pieces") {
                         flag = true
                     }
-                    return Pair(str.toString(), itr) //itr is at byte AFTER end of string
+                    return Pair(str.toString(),itr) //itr is at byte AFTER end of string
                 }
                 str_len = (str_len * 10) + (char - '0')
                 itr++
@@ -170,6 +174,31 @@ object Bencoding {
         }
         // print(infohash2.toString())
         return infohash2.toString()
+    }
+
+
+    /**
+     *
+     * URL-Encodes the infohash hex-string. Taking each pair of hex characters(a single byte) and translating it into
+     * the appropriate url-encoded value
+     * [infohash] 20-byte hex sha-1 hash of the bencoded value of the info key in a torrent meta info dictionary
+     * @returns: URLEncoded infohash
+     */
+    public fun urlInfohash(infohash: String): String {
+        val encodedInfohash = StringBuilder()
+        val charList = ('0'..'9') + ('a'..'z') + ('A'..'Z') + '.'+'_'+'-'+'~'
+        //println(charList)
+        for(i in infohash.indices step 2) {
+            val hexVal : String =  (infohash.get(i).toString() +infohash.get(i+1).toString())
+            val char = java.lang.Long.parseLong(hexVal, 16).toChar()
+            //println("char num: $i - " + char + " " + hexVal + "\n")
+            when(char) {
+                in charList -> encodedInfohash.append(char)
+                ' '-> encodedInfohash.append('+')
+                else -> encodedInfohash.append("%$hexVal")
+            }
+        }
+        return encodedInfohash.toString()
     }
 
     /**

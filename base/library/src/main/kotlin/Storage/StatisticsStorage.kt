@@ -17,7 +17,7 @@ class StatisticsStorage @Inject constructor(
 
     override fun getStats(infohash: String): Map<String, Any>? {
         val peers = statsStorage.read(infohash.toByteArray()) ?: return null
-        return Conversion.fromByteArray(peers) as Map<String, Any>
+        return Conversion.fromByteArray(peers) as Map<String, Any>?
     }
 
     override fun updateStats(infohash: String, statsMap:Map<String,Any>) {
