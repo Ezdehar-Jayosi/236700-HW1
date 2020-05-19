@@ -19,6 +19,7 @@ import java.net.HttpURLConnection
 import java.io.*
 import com.github.kittinunf.fuel.httpGet
 import com.github.kittinunf.result.*
+import com.google.common.primitives.UnsignedBytes
 import java.net.InetAddress
 import java.util.HashMap
 
@@ -27,26 +28,29 @@ class ResourceGetter{
 fun main() {
     val encoding = "UTF-8"
     val infohash = "5a8062c076fa85e8056451c0d9aa04349ae27909"
-    var request_params = URLEncoder.encode("info_hash",encoding) + "=" + Bencoding.urlInfohash(infohash)
-    val IDsumHash = MessageDigest.getInstance("SHA-1").digest((315737809+313380164).toString().toByteArray())
+    val biptunia_infohash = "f9d7bb451668e10032d3a62ae91a9e8a723dd951"
+    var request_params = URLEncoder.encode("info_hash", encoding) + "=" + Bencoding.urlInfohash(infohash)
+    val IDsumHash = MessageDigest.getInstance("SHA-1").digest((315737809 + 313380164).toString().toByteArray())
     val IDsumHashPart = IDsumHash
-        .map{i->"%x".format(i)}
+        .map { i -> "%x".format(i) }
         .joinToString("")
         .take(6)
-    val peer_id = "-CS1000-"+IDsumHashPart+"abcdef"
+    val peer_id = "-CS1000-" + IDsumHashPart + "abcdef"
     val port = "6885"
-    request_params += "&" + URLEncoder.encode("peer_id",encoding) +"="+URLEncoder.encode(peer_id,encoding)
-    request_params += "&" + URLEncoder.encode("port",encoding) +"="+URLEncoder.encode(port,encoding)
-    request_params += "&" + URLEncoder.encode("uploaded",encoding) +"="+URLEncoder.encode("0",encoding)
-    request_params += "&" + URLEncoder.encode("downloaded",encoding) +"="+URLEncoder.encode("0",encoding)
-    request_params += "&" + URLEncoder.encode("left",encoding) +"="+URLEncoder.encode("0",encoding)
-    request_params += "&" + URLEncoder.encode("compact",encoding) +"="+URLEncoder.encode("1",encoding)
-    request_params += "&" + URLEncoder.encode("event",encoding) +"="+URLEncoder.encode("0",encoding)
+    request_params += "&" + URLEncoder.encode("peer_id", encoding) + "=" + URLEncoder.encode(peer_id, encoding)
+    request_params += "&" + URLEncoder.encode("port", encoding) + "=" + URLEncoder.encode(port, encoding)
+    request_params += "&" + URLEncoder.encode("uploaded", encoding) + "=" + URLEncoder.encode("0", encoding)
+    request_params += "&" + URLEncoder.encode("downloaded", encoding) + "=" + URLEncoder.encode("0", encoding)
+    request_params += "&" + URLEncoder.encode("left", encoding) + "=" + URLEncoder.encode("0", encoding)
+    request_params += "&" + URLEncoder.encode("compact", encoding) + "=" + URLEncoder.encode("1", encoding)
+    request_params += "&" + URLEncoder.encode("event", encoding) + "=" + URLEncoder.encode("0", encoding)
 
+    //var announce_list = listOf(listOf("http://legittorrents.info:2710/announce"))
     var announce_list = listOf(listOf("http://bttracker.debian.org:6969/announce"))
+
     announce_list = announce_list.map { list -> list.shuffled(kotlin.random.Random(123)) }
-    for(announce_tier in announce_list) {
-        var good_announce : String? = null
+    for (announce_tier in announce_list) {
+        var good_announce: String? = null
         for (announce_url in announce_tier) {
             val req = "$announce_url?$request_params"
             val (request, response, result) = req.httpGet().response()
@@ -57,23 +61,22 @@ fun main() {
                 }
                 is Result.Success -> {
                     val data = result.get()
+                    println(data.toString(Charsets.UTF_8))
                     val announceResponse = Bencoding.DecodeObjectM(data) ?: throw IllegalArgumentException()
-                    println(announceResponse["peers"].toString())
-                    val peers :ByteArray = announceResponse["peers"].toString().toByteArray()
-                    println(peers)
-                    if(Bencoding.DecodeObject(peers) is Map<*,*>){
-                        //handle as map
+                    println(announceResponse)
+                    val peers2: ByteArray = announceResponse["peers"] as ByteArray
+                    println(peers2.toString())
+                    if (Bencoding.DecodeObject(peers2) is Map<*, *>) {
+                        //println(peers2.toString())
                     } else {
-                        val binaryPeersList = peers.asSequence().chunked(6)
-                        //val knownPeersList = MutableList<KnownPeer>()
-                        for(portIP in binaryPeersList){
-                            val peerIP = InetAddress.getByAddress((portIP.take(4).toByteArray()))
-                            val peerPort1 = ((portIP[4].toLong() shl Byte.SIZE_BITS).toInt())
-                            val peerPort2 = (portIP[5].toInt())
-                            //knownPeersList.add(KnownPeer(peerIP.toString(), peerPort, peer_id))
-                            println(peerIP)
-                            println(peerPort1)
-                            println(peerPort2)
+                        val segmentedPeerList = peers2.asList().chunked(6)
+                        for (portIP in segmentedPeerList) {
+                            val peerIP = InetAddress.getByAddress(portIP.take(4).toByteArray()).hostAddress
+                            val peerPort = ((portIP[4].toUByte().toInt() shl 8) + (portIP[5].toUByte().toInt()))
+                            println("PortIP bytes: " + portIP as List<Int>)
+                            println("Calculated IP: " + peerIP)
+                            println("Port first byte: " + peerPort)
+                            //println("Port second byte: " + peerPort2)
                         }
                         //println(knownPeersList)
 

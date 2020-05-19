@@ -1,7 +1,9 @@
 package il.ac.technion.cs.softwaredesign
 
-data class KnownPeer(
+import java.io.Serializable
+
+data class KnownPeer (
     val ip: String,
     val port: Int,
     val peerId: String?
-)
+): Serializable

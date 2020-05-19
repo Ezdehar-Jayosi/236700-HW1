@@ -28,6 +28,6 @@ class PeerStorage @Inject constructor(
 
     override fun getPeersList(infohash: String): List<Any>? {
         val peers = peerStorage.read(infohash.toByteArray()) ?: return null
-        return (Conversion.fromByteArray(peers) as Map<String, Any>).toList() //TODO CHECK IF THIS WORKS
+        return (Conversion.fromByteArray(peers) as List<Any>) //TODO CHECK IF THIS WORKS
     }
 }

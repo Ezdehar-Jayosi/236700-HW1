@@ -26,7 +26,7 @@ class TorrentStorage @Inject constructor(
 
     override fun updateAnnounceList(infohash: String, announceList: List<List<String>>) {
         val retVlaue= torrentStorage.read(infohash.toByteArray())
-        if(retVlaue!=null && fromByteArray(retVlaue) as String!="unloaded" ) {
+        if(retVlaue!=null && (fromByteArray(retVlaue).toString() !="unloaded" )) {
             torrentStorage.write(infohash.toByteArray(Charsets.UTF_8), toByteArray(announceList) as ByteArray)
         }
     }

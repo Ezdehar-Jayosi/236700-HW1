@@ -120,7 +120,7 @@ object Bencoding {
                         val stringEnd = itr + str_len
                         flag = false
                         //val b:Byte= Byte()
-                        val res = obj.copyOfRange(itr + 1, stringEnd)
+                        val res = obj.copyOfRange(itr + 1, stringEnd+1)
                         return Pair(res, stringEnd + 1)
                     }
                     val stringEnd = itr + str_len
@@ -136,7 +136,7 @@ object Bencoding {
                     str.append((obj.copyOfRange(itr + 1, stringEnd+1)).toString(Charsets.UTF_8))
                     itr = stringEnd + 1
                     //the pieces value is encoded differently, so we handle the decoding differently
-                    if (str.toString() == "pieces") {
+                    if ((str.toString() == "pieces") or (str.toString() == "peers")) {
                         flag = true
                     }
                     return Pair(str.toString(),itr) //itr is at byte AFTER end of string
