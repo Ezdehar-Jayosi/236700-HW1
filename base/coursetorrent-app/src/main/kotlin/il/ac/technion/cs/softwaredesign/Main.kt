@@ -19,6 +19,7 @@ import java.net.HttpURLConnection
 import java.io.*
 import com.github.kittinunf.fuel.httpGet
 import com.github.kittinunf.result.*
+import java.net.InetAddress
 import java.util.HashMap
 
 class ResourceGetter{
@@ -26,7 +27,6 @@ class ResourceGetter{
 fun main() {
     val encoding = "UTF-8"
     val infohash = "5a8062c076fa85e8056451c0d9aa04349ae27909"
-    //val infohash = "821ca5cfbb92f008f6f5ecfd2a894f35deb41d56" //biptunia hash
     var request_params = URLEncoder.encode("info_hash",encoding) + "=" + Bencoding.urlInfohash(infohash)
     val IDsumHash = MessageDigest.getInstance("SHA-1").digest((315737809+313380164).toString().toByteArray())
     val IDsumHashPart = IDsumHash
@@ -53,12 +53,36 @@ fun main() {
             when (result) {
                 is Result.Failure -> {
                     val ex = result.getException()
-                    throw IllegalArgumentException() //TODO: replace with something else? not a tracker failure
+                    print(ex)
                 }
                 is Result.Success -> {
                     val data = result.get()
                     val announceResponse = Bencoding.DecodeObjectM(data) ?: throw IllegalArgumentException()
-                    print(announceResponse)
+                    println(announceResponse["peers"].toString())
+                    val peers :ByteArray = announceResponse["peers"].toString().toByteArray()
+                    println(peers)
+                    if(Bencoding.DecodeObject(peers) is Map<*,*>){
+                        //handle as map
+                    } else {
+                        val binaryPeersList = peers.asSequence().chunked(6)
+                        //val knownPeersList = MutableList<KnownPeer>()
+                        for(portIP in binaryPeersList){
+                            val peerIP = InetAddress.getByAddress((portIP.take(4).toByteArray()))
+                            val peerPort1 = ((portIP[4].toLong() shl Byte.SIZE_BITS).toInt())
+                            val peerPort2 = (portIP[5].toInt())
+                            //knownPeersList.add(KnownPeer(peerIP.toString(), peerPort, peer_id))
+                            println(peerIP)
+                            println(peerPort1)
+                            println(peerPort2)
+                        }
+                        //println(knownPeersList)
+
+                    }
+                    //println(InetAddress.getByAddress((announceResponse["peers"].toString().toByteArray()).take(4).toByteArray()))
+                    //val port_bytes = (announceResponse["peers"] as String).toByteArray()
+                    //println(port_bytes.get(4).toInt()*256 + port_bytes.get(5).toInt())
+                    //(0..7)
+                    //    .forEach{println(announceResponse["peers"].toString().toByteArray().get(it).toInt())}
                 }
             }
 
