@@ -21,8 +21,6 @@ class StatisticsStorage @Inject constructor(
     }
 
     /***
-     * Scrape Data will be saved as a list of size 5. 0-3 are Scrape, in order. 4 is Failure.
-     * if list(4) = null, no failure. otherwise, list(4) = failure reason
      */
     override fun updateStats(infohash: String, statsMap:Map<String,Any>) {
         statsStorage.write(infohash.toByteArray(), Conversion.toByteArray(statsMap) as ByteArray)

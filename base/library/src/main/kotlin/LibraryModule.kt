@@ -8,20 +8,16 @@ import com.google.inject.Inject
 import com.google.inject.Provides
 import com.google.inject.Singleton
 import dev.misfitlabs.kotlinguice4.KotlinModule
-import il.ac.technion.cs.softwaredesign.storage.SecureStorage
-import il.ac.technion.cs.softwaredesign.storage.SecureStorageFactory
-//import il.ac.technion.cs.softwaredesign.storage.impl.SecureStorageFactoryImpl
-//import il.ac.technion.cs.softwaredesign.storage.impl.SecureStorageImpl
+
+//import il.ac.technion.cs.softwaredesign.storage.impl.*
+import il.ac.technion.cs.softwaredesign.storage.*
 
 class LibraryModule : KotlinModule() {
     override fun configure() {
         bind<Peer>().to<PeerStorage>()
         bind<Statistics>().to<StatisticsStorage>()
         bind<Torrent>().to<TorrentStorage>()
-        //TODO: super mega important: add import for softwaredesign.storage.impl for staff implementation
-        //TODO: remove??? TestStorage/TestStorageFactory ??
-        bind<SecureStorageFactory>().toInstance(SecureStorageFactoryImpl())
-        bind<SecureStorage>().toInstance(SecureStorageImpl())
+
 
     }
 

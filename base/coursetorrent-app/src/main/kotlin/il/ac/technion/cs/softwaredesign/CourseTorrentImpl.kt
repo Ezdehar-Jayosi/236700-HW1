@@ -7,11 +7,8 @@ import com.google.inject.Inject
 import il.ac.technion.cs.softwaredesign.exceptions.TrackerException
 import Utils.*
 import java.io.*
-import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
-import java.util.*
-import kotlin.Comparator
 import java.net.InetAddress
 
 /**
@@ -24,7 +21,9 @@ import java.net.InetAddress
 class CourseTorrentImpl @Inject constructor(
     private val statStorage: Statistics,
     private val peerStorage: Peer,
-    private val torrentStorage: Torrent
+    private val torrentStorage: Torrent,
+    private val httpRequest: HTTPGet = HTTPGet()
+
 ) : CourseTorrent {
     private val encoding = Charsets.UTF_8
     private val unloadedVal = "unloaded"
@@ -51,7 +50,7 @@ class CourseTorrentImpl @Inject constructor(
         val info_hash = Bencoding.infohash(torrent)
         val existing_entry = torrentStorage.getTorrentData(info_hash)
         if (existing_entry != null)
-            if (existing_entry.toString(Charsets.UTF_8) != unloadedVal)
+            if (existing_entry.toString(encoding) != unloadedVal)
                 throw IllegalStateException()
         val bos = ByteArrayOutputStream()
         val oos = ObjectOutputStream(bos)
@@ -71,7 +70,7 @@ class CourseTorrentImpl @Inject constructor(
      */
     override fun unload(infohash: String): Unit {
         val previousValue = torrentStorage.getTorrentData(infohash) ?: throw IllegalArgumentException()
-        if (previousValue.toString() == unloadedVal) throw IllegalArgumentException()
+        if (previousValue.toString(encoding) == unloadedVal) throw IllegalArgumentException()
         torrentStorage.removeTorrent(infohash, unloadedVal)
         statStorage.updateStats(infohash, mapOf(unloadedVal to Scrape(0,0,0,null)))
         peerStorage.addPeers(infohash, listOf(KnownPeer("",0,unloadedVal)))
@@ -149,17 +148,14 @@ class CourseTorrentImpl @Inject constructor(
         val request_params = createAnnounceRequestParams(infohash, event, uploaded, downloaded, left, peer_id, port)
         var announce_list = announces(infohash) as MutableList<MutableList<String>>
         if (event == TorrentEvent.STARTED)
-            announce_list = announce_list.map { list -> list.shuffled(kotlin.random.Random(123)) } as MutableList<MutableList<String>>
+            announce_list = announce_list.map { list -> list.shuffled() } as MutableList<MutableList<String>>
         var latest_failure : String = ""
         var good_announce : String = ""
         var interval : Int = 0
-        var new_list = emptyList<String>()
-        var new_announce_list = announce_list
         var success = false
         for (announce_tier in announce_list) {
             for (announce_url in announce_tier){
                 if (success) break
-                val httpRequest = HTTPGet()
                 val data = httpRequest.httpGET(announce_url, request_params)
                 if(httpRequest.connectionSuccess == false) {
                     latest_failure = data as String
@@ -171,46 +167,44 @@ class CourseTorrentImpl @Inject constructor(
                     else {
                         latest_failure = ""
                         good_announce= announce_url
-                        val peers :ByteArray = announceResponse["peers"] as ByteArray
                         val knownPeersList = peerList.toMutableList()
-                        if(false) {//Bencoding.DecodeObject(peers) is Map<*,*>){
-                            //handle as map
+                        if( announceResponse["peers"] is List<*>){//Bencoding.DecodeObject(peers) is Map<*,*>){
+                            (announceResponse["peers"] as List<*>).forEach{ peers ->
+                                val peerDict = (peers as Map<String,Any>)
+                                val peerIP = decodeIP(peerDict["ip"] as String?)
+                                val newPeer = KnownPeer(peerIP, peerDict["port"] as Int, peerDict["peer id"] as String?)
+                                knownPeersList.filter { !(it.ip == newPeer.ip && it.port == newPeer.port)}
+                                knownPeersList.add(KnownPeer(newPeer.ip, newPeer.port, newPeer.peerId))
+                            }
                         } else {
+                            val peers :ByteArray = announceResponse["peers"] as ByteArray
                             val segmentedPeerList = peers.asList().chunked(6)
                             for (portIP in segmentedPeerList) {
                                 val peerIP = InetAddress.getByAddress(portIP.take(4).toByteArray()).hostAddress
                                 val peerPort = ((portIP[4].toUByte().toInt() shl 8) + (portIP[5].toUByte().toInt()))
-                                knownPeersList.add(KnownPeer(peerIP.toString(), peerPort, peer_id))
+                                knownPeersList.filter { !(it.ip == peerIP.toString() && it.port == peerPort)}
+                                knownPeersList.add(KnownPeer(peerIP.toString(), peerPort, null))
                             }
 
                         }
                         peerStorage.addPeers(infohash, knownPeersList)
-                        println(knownPeersList)
-
-
-
                         interval = announceResponse["interval"] as Int
                         success = true
                         val scrapeData : ScrapeData = Scrape((announceResponse["complete"]?:0 )as Int,
                             (announceResponse["downloaded"]?:0) as Int,
                             (announceResponse["incomplete"]?:0) as Int,
                             announceResponse["name"] as String?) as ScrapeData
-                        val newMap = statsMap.plus(Pair(announce_url, scrapeData))
-                        println(newMap)
+                        val newMap = statsMap.plus(Pair(announce_url.split("/").dropLast(1).joinToString("/"), scrapeData))
                         statStorage.updateStats(infohash, newMap)
-
                         }
                     }
                 if(success == true) continue
             }
             if(success) {
                 announce_tier.remove(good_announce)
-                announce_tier.add(0, good_announce)//TODO: test this works
+                announce_tier.add(0, good_announce)
                 break
             }
-            //new_list = announce_tier.minus(good_announce) as MutableList<String>
-            //new_list.add(0, good_announce)
-            //new_announce_list = new_announce_list.minus(announce_tier)
         }
         if(latest_failure != "")
             throw TrackerException(latest_failure)
@@ -230,49 +224,50 @@ class CourseTorrentImpl @Inject constructor(
      */
     override fun scrape(infohash: String): Unit {
         val previousValue = torrentStorage.getTorrentData(infohash) ?: throw IllegalArgumentException()
-        if (previousValue.toString() == unloadedVal) throw IllegalArgumentException()
+        if (previousValue.toString(encoding) == unloadedVal) throw IllegalArgumentException()
         var statsMap : Map<String, ScrapeData> = (statStorage.getStats(infohash) ?: emptyMap<String, ScrapeData>()) as Map<String, ScrapeData>
         if (statsMap.containsKey(unloadedVal)) statsMap = emptyMap<String, ScrapeData>()
-        val encoding = "UTF-8"
-        val requestParams = URLEncoder.encode("info_hash", encoding) + "=" + Bencoding.urlInfohash(infohash)
+        val requestParams = URLEncoder.encode("info_hash", "UTF-8") + "=" + Bencoding.urlInfohash(infohash)
         val announceList = announces(infohash)
         for (announce_tier in announceList) {
             for (announce_url in announce_tier) {
                 val splitAnnounce = announce_url.split("/")
                 val splitScrape = splitAnnounce.dropLast(1) + Regex("^announce").replace(splitAnnounce.last(), "scrape")
                 val scrapeUrl = splitScrape.joinToString("/")
-                val httpRequest = HTTPGet()
+                val urlName = announce_url//splitAnnounce.dropLast(1).joinToString("/")
                 val data = httpRequest.httpGET(scrapeUrl, requestParams)
-                if(httpRequest.connectionSuccess == false) {
-                    val statsMap = statStorage.getStats(infohash) as HashMap<String,ScrapeData>
-                    statsMap[scrapeUrl] = Failure(reason = "Connection Failed")
-                    print(statsMap)
-                    statStorage.updateStats(infohash, statsMap)
-                }
+                if(!httpRequest.connectionSuccess) {
+                    statsMap = statsMap.filter { (k, _) -> k != urlName}
+                    statsMap = statsMap.plus(Pair(urlName, Failure(reason = "Connection Failure")))                }
                 else {
                     val scrapeResponse = Bencoding.DecodeObjectM(data as ByteArray) ?: throw IllegalArgumentException()
-                    val statsDict = scrapeResponse["files"] as Map<*,*>
-                    if(statsDict.isEmpty()) {
-                        val newMap = statsMap.plus(Pair(scrapeUrl, Failure(reason = "not specified")))//TODO: what reason?
-                        println(newMap)
-                        statStorage.updateStats(infohash, newMap)
+                    if((scrapeResponse as Map<*,*>).containsKey("failure reason")){
+                        statsMap = statsMap.filter { (k, _) -> k != urlName}
+                        statsMap = statsMap.plus(Pair(urlName, Failure(reason = (scrapeResponse["failure reason"] as String))))
+                    } else {
+                        val statsDict = scrapeResponse["files"] as Map<*,*>
+                        if(statsDict.isEmpty()) {
+                            statsMap = statsMap.filter { (k, _) -> k != urlName}
+                            statsMap = statsMap.plus(Pair(urlName, Failure(reason = "not specified")))
+                        } else {
+                            print(statsDict[infohash])
+                            val statsValues = statsDict.values.toList()[0] as Map<*, *>
+                            print(statsValues)
+                            val scrapeData: ScrapeData = Scrape(
+                                    statsValues["complete"] as Int,
+                                    statsValues["downloaded"] as Int,
+                                    statsValues["incomplete"] as Int,
+                                    statsValues["name"] as String?
+                            ) as ScrapeData
+                            statsMap = statsMap.filter { (k, _) -> k != urlName}
+                            statsMap = statsMap.plus(Pair(urlName, scrapeData))
+                        }
                     }
-                    val statsValues = statsDict.values.toList()[0] as Map<*,*>
-
-                    val scrapeData : ScrapeData = Scrape(statsValues["complete"] as Int,
-                        statsValues["downloaded"] as Int,
-                        statsValues["incomplete"] as Int,
-                        statsValues["name"] as String?) as ScrapeData
-                    val newMap = statsMap.plus(Pair(scrapeUrl, scrapeData))
-                    println(newMap)
-                    statStorage.updateStats(infohash, newMap)
-
-
-
                 }
-
             }
         }
+        statStorage.updateStats(infohash, statsMap)
+
     }
 
 
@@ -288,8 +283,13 @@ class CourseTorrentImpl @Inject constructor(
      */
     override fun invalidatePeer(infohash: String, peer: KnownPeer): Unit {
         val torrent = torrentStorage.getTorrentData(infohash) ?: throw IllegalArgumentException()
-        if (torrent.toString() == unloadedVal) throw IllegalArgumentException()
-        peer.peerId?.let { peerStorage.invalidatePeer(infohash, it) }
+        if (torrent.toString(encoding) == unloadedVal) throw IllegalArgumentException()
+        var peerList : List<KnownPeer> = (peerStorage.getPeers(infohash) ?: emptyList<KnownPeer>()) as List<KnownPeer>
+        if(peerList.isNotEmpty())
+            if (peerList[0] == KnownPeer("",0,unloadedVal))
+                peerList = emptyList<KnownPeer>()
+        val newList = peerList.filter{ !(it.ip==peer.ip && it.port == peer.port) }
+        peerStorage.addPeers(infohash, newList)
 
     }
 
@@ -307,39 +307,18 @@ class CourseTorrentImpl @Inject constructor(
      * @throws IllegalArgumentException If [infohash] is not loaded.
      * @return Sorted list of known peers.
      */
-    /*override fun knownPeers(infohash: String): List<KnownPeer> {
-        val torrent = torrentStorage.getTorrentData(infohash) ?: throw IllegalArgumentException()
-        if (torrent.toString() == unloadedVal) throw IllegalArgumentException()
-        val list = peerStorage.getPeersList(infohash) as List<KnownPeer>
-        val peerComparator =
-            Comparator<KnownPeer> { a: KnownPeer, b: KnownPeer ->
-                val x = fromStringToInteger(a.ip.replace(".", ""))
-                val y = fromStringToInteger(b.ip.replace(".", ""))
-                when {
-                    (y >= x) -> 0
-                    (x > y) -> -1
-                    else -> -1
-                }
-            }
-        return list.sortedWith(peerComparator)
-    }*/
     override fun knownPeers(infohash: String): List<KnownPeer> {
         val torrent = torrentStorage.getTorrentData(infohash) ?: throw IllegalArgumentException()
-        if (torrent.toString() == unloadedVal) throw IllegalArgumentException()
-        val list = peerStorage.getPeersList(infohash) as List<KnownPeer>
-        for(peer in list) {
-            println(peer)
-        }
-        return  list.sortedBy {
+        if (torrent.toString(encoding) == unloadedVal) throw IllegalArgumentException()
+        var list : List<KnownPeer> = (peerStorage.getPeers(infohash) ?: emptyList<KnownPeer>()) as List<KnownPeer>
+        if(list.isNotEmpty())
+            if (list[0] == KnownPeer("",0,unloadedVal))
+                list = emptyList()
+
+        return list.sortedBy {
             it.ip.split(".").asSequence().map { "%02x".format(it.toInt().toByte()) }.toList()
                 .joinToString(separator = "") { it }
         }
-//        list.sortedWith(
-//        compareBy({
-//            it.ip.split(".").asSequence().map { "%02x".format(it.toByte()) }.toList()
-//                .joinToString(separator = "") { it }
-//        }))
-
     }
 
     /**
@@ -363,7 +342,7 @@ class CourseTorrentImpl @Inject constructor(
     override fun trackerStats(infohash: String): Map<String, ScrapeData> {
 
         val torrent = torrentStorage.getTorrentData(infohash) ?: throw IllegalArgumentException()
-        if (torrent.toString() == unloadedVal) throw IllegalArgumentException()
+        if (torrent.toString(encoding) == unloadedVal) throw IllegalArgumentException()
         val statmap = statStorage.getStats(infohash) as Map<String, ScrapeData>
         return statmap
     }
@@ -375,7 +354,7 @@ class CourseTorrentImpl @Inject constructor(
         var num: Int = 0
         var itr = 0
         while (itr != Ip.length) {
-            var char: Char = Ip[itr].toChar()
+            val char: Char = Ip[itr].toChar()
             num = (num * 10) + (char - '0')
             itr++
 
@@ -392,5 +371,14 @@ class CourseTorrentImpl @Inject constructor(
         request_params += "&" + URLEncoder.encode("compact", encoding) + "=" + URLEncoder.encode("1", encoding)
         request_params += "&" + URLEncoder.encode("event", encoding) + "=" + URLEncoder.encode(event.toString(), encoding)
         return request_params
+    }
+    private fun decodeIP(ip: String?) : String {
+        if(ip == null) return "0.0.0.0"
+        if(ip.toByteArray().size == 4) {
+            return InetAddress.getByAddress(ip.toByteArray()).hostAddress
+        }
+        else {
+            return ip
+        }
     }
 }

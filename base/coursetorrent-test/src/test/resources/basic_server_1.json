@@ -1,0 +1,22 @@
+{
+  "f8fdb7d5dfe8810cdbe3006c6951ba8e559d7675": {
+    "announce": [
+      "d14:failure reason15:The first errore",
+      "d14:failure reason14:The last errore"
+    ],
+    "scrape": [
+      "d14:failure reason12:Scrapy errore",
+      "d14:failure reason13:Scrapy again!e"
+    ]
+  },
+  "156b69b8643bd11849a5d8f2122e13fbb61bd041": {
+    "announce": [
+      "d8:intervali250e5:peers48:0g6\u00e4\u00b1\u001c\u00f3#\u0018i`HU\u0096_\u00f9uR\u00bf]\u0095\u0093}u\u00e0\u0000\u009c\u0004}\u009f\u0090\u00ec\u00c5K\u00e8z\u00ab\u0092w\u0019N\u00f4!\u001b\u00e06\u00b066:peers60:e",
+      "d8:intervali300e5:peers42:PP\u0080\u00161\u000bPP\u0080\u00050pPP\u0080\u00040qPP\u0080%4]PP\u0080oU\u008cPO\u0080\u00161\u000bPP\u007f\u0016z\u00d46:peers60:e"
+    ],
+    "scrape": [
+      "d5:filesd40:156b69b8643bd11849a5d8f2122e13fbb61bd041d8:completei60e10:downloadedi12e10:incompletei10eeee"
+      ,"d5:filesd40:156b69b8643bd11849a5d8f2122e13fbb61bd041d8:completei50e10:downloadedi0e10:incompletei0e4:name13:Slackware.bineee"
+    ]
+  }
+}

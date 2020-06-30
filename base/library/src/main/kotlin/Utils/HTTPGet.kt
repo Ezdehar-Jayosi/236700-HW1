@@ -7,7 +7,8 @@ import com.github.kittinunf.result.Result
  */
 class HTTPGet {
     public var connectionSuccess : Boolean = false
-    public fun httpGET(requestURL:String, requestParameters:String) : Any{
+    public fun httpGET(requestURL:String, requestParameters:String) : Any {
+        connectionSuccess = false
         val (request, response, result) = "$requestURL?$requestParameters".httpGet().response()
         when (result) {
             is Result.Failure -> {

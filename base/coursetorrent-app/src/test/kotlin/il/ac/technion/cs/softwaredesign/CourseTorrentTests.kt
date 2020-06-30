@@ -1,50 +1,33 @@
 package il.ac.technion.cs.softwaredesign
 
 
-import Utils.Bencoding
 import Utils.HTTPGet
 import com.google.inject.Guice
 import com.natpryce.hamkrest.*
 import com.natpryce.hamkrest.assertion.assertThat
+import dev.misfitlabs.kotlinguice4.KotlinModule
 import dev.misfitlabs.kotlinguice4.getInstance
+import il.ac.technion.cs.softwaredesign.exceptions.TrackerException
 import io.mockk.*
 //import il.ac.technion.cs.softwaredesign.storage.SecureStorage
-import io.mockk.*
 import org.junit.jupiter.api.*
-import java.util.*
-import kotlin.collections.HashMap
 
-//@TestInstance(TestInstance.Lifecycle.PER_METHOD)
 class CourseTorrentTests {
-    private val injector = Guice.createInjector(CourseTorrentModule())
+    private val httpMock = mockk<HTTPGet>(relaxed=true)
+    inner class TestModule : KotlinModule(){
+        override fun configure() {
+            bind<HTTPGet>().toInstance(httpMock)
+        }
+    }
+    private val injector = Guice.createInjector(CourseTorrentTestModule(), TestModule())
     private val torrent = injector.getInstance<CourseTorrent>()
     private val debian = this::class.java.getResource("/debian-10.3.0-amd64-netinst.iso.torrent").readBytes()
     private val lame = this::class.java.getResource("/lame.torrent").readBytes()
-    private val announceListTorrent = this::class.java.getResource("/Legal torrent of BipTunia's 38th album “DON2019T CARE” - FLAC 24-bit lossless.torrent").readBytes()
-    //private val largerTorrent = this::class.java.getResource("/PublicDomainTorrents.info Backup of ALL Torrents [12-17-2016].torrent").readBytes()
+    private val announceListTorrent = this::class.java.getResource("/announceListTorrent.torrent").readBytes()
+    private val shuffleableTorrent = this::class.java.getResource("/gt_chrY.xml(3).torrent").readBytes()
     private val charset = Charsets.UTF_8
-    //private val httpMock = mockk<HTTPGet>(relaxed=true)
-    /*@BeforeEach
-    fun setUpMockk() {
-        val Storage = HashMap<String?, ByteArray?>()
-        //mockkStatic("il.ac.technion.cs.softwaredesign.storage.SecureStorage")
-        //mockk<SecureStorage>(relaxed = true)
-        val key_slot = slot<ByteArray>()
-        val val_slot = slot<ByteArray>()
-        every {
-            //write(capture(key_slot), capture(val_slot))
-        } answers {
-            val value = val_slot.captured
-            val key = key_slot.captured.toString(charset)
-            Storage[key] = value
-        }
-        every {
-            //read(capture(key_slot))
-        } answers {
-            val key = key_slot.captured.toString(charset)
-            Storage[key]
-        }
-    }*/
+
+
 
     @Test
     fun `after load, infohash calculated correctly`() {
@@ -67,6 +50,7 @@ class CourseTorrentTests {
         val infohash = torrent.load(debian)
         torrent.unload(infohash)
         torrent.load(debian)
+        assertThat(infohash, equalTo("5a8062c076fa85e8056451c0d9aa04349ae27909"))
     }
     @Test
     fun `failing on loading the same torrent twice`() {
@@ -74,7 +58,7 @@ class CourseTorrentTests {
         assertThrows<IllegalStateException> { torrent.load(debian) }
     }
     @Test
-    fun `test correctness of announce`() {
+    fun `test correctness of announces`() {
         val infohash = torrent.load(debian)
         val announces = torrent.announces(infohash)
         assertThat(announces, allElements(hasSize(equalTo(1))))
@@ -127,10 +111,11 @@ class CourseTorrentTests {
 
     @Test
     fun `announce to tracker`(){
-        val httpMock = mockk<HTTPGet>(relaxed=false)
         every{
             httpMock.httpGET(any(),any())
-        } answers{ "d8:intervali360e5:peers0:e".toByteArray(charset) }
+        } answers{
+            "d8:intervali360e5:peers0:e".toByteArray(charset)
+        }
         every{
             httpMock.connectionSuccess
         } returns true
@@ -139,33 +124,62 @@ class CourseTorrentTests {
         /* interval is 360 */
         val infohash = torrent.load(lame)
         val interval = torrent.announce(infohash, TorrentEvent.STARTED, 0, 0, 0)
-
         assertThat(interval, equalTo(360))
         /* Assertion to verify that the tracker was actually called */    }
     @Test
     fun `scrape tracker`(){
         val infohash = torrent.load(lame)
-        //every{
-          //  httpMock.httpGET("https://127.0.0.1:8082/announce",any())
-        //} returns 0
+        every{
+            httpMock.httpGET("https://127.0.0.1:8082/scrape",any())
+        } answers {
+            "d5:flagsd20:min_request_intervali900ee5:filesd20:infohashinfohashinfod8:completei778e10:incompletei1e10:downloadedi18241eeee".toByteArray(charset)
+        }
+        every{
+            httpMock.connectionSuccess
+        } returns true
+
         /* Tracker has infohash, 0 complete, 0 downloaded, 0 incomplete, no name key */
         assertDoesNotThrow { torrent.scrape(infohash) }
 
         assertThat(
             torrent.trackerStats(infohash),
-            equalTo(mapOf(Pair("http://127.0.0.1:8082", Scrape(0, 0, 0, null) as ScrapeData)))
+            equalTo(mapOf(Pair("https://127.0.0.1:8082", Scrape(778, 18241, 1, null) as ScrapeData)))
         )
         /* Assertion to verify that the tracker was actually called */
     }
     @Test
-    fun `new methods fail on unloaded torrent`(){
-
+    fun `announce, scrape fail on unloaded torrent`(){
+        val infohash = "5a8062c076fa85e8056451c0d9aa04349ae27909"
+        assertThrows<IllegalArgumentException>{torrent.announce(infohash, TorrentEvent.COMPLETED, 0,0,0)}
+        assertThrows<IllegalArgumentException>{torrent.scrape(infohash)}
+    }
+    @Test
+    fun `invalidate, knownPeers, stats fail on unloaded torrent`(){
+        val infohash = "5a8062c076fa85e8056451c0d9aa04349ae27909"
+        assertThrows<IllegalArgumentException>{torrent.invalidatePeer(infohash, KnownPeer("abc",5,"id"))}
+        assertThrows<IllegalArgumentException>{torrent.knownPeers(infohash)}
+        assertThrows<IllegalArgumentException> {torrent.trackerStats(infohash)}
     }
     @Test
     fun `invalidate unit test`(){
         val infohash = torrent.load(lame)
+
+        every{
+            httpMock.httpGET("https://127.0.0.1:8082/announce",any())
+        } answers {
+            "d8:intervali360e5:peers6:".toByteArray(charset) + byteArrayOf(127,0,0,22,26, 231.toByte()) + "e".toByteArray(charset)
+        }
+        every{
+            httpMock.connectionSuccess
+        } returns true
         /* Returned peer list is: [("127.0.0.22", 6887)] */
         torrent.announce(infohash, TorrentEvent.STARTED, 0, 0, 2703360)
+
+        every{
+            httpMock.httpGET("https://127.0.0.1:8082/announce",any())
+        } answers {
+            "d8:intervali360e5:peers6:".toByteArray(charset) + byteArrayOf(127,0,0,21,26, 233.toByte()) + "e".toByteArray(charset)
+        }
         /* Returned peer list is: [("127.0.0.22", 6887), ("127.0.0.21", 6889)] */
         torrent.announce(infohash, TorrentEvent.REGULAR, 0, 81920, 2621440)
 
@@ -173,18 +187,34 @@ class CourseTorrentTests {
 
         assertThat(
             torrent.knownPeers(infohash),
-            anyElement(has(KnownPeer::ip, equalTo("127.0.0.21")) and has(KnownPeer::port, equalTo(6889))).not()
+            anyElement(has(KnownPeer::ip, equalTo("127.0.0.22")) and has(KnownPeer::port, equalTo(6887))).not()
         )
     }
     @Test
     fun `peer list after announce`(){
         val infohash = torrent.load(lame)
 
+        every{
+            httpMock.httpGET("https://127.0.0.1:8082/announce",any())
+        } answers {
+            "d8:intervali360e5:peers6:".toByteArray(charset) + byteArrayOf(127,0,0,22,26, 231.toByte()) + "e".toByteArray(charset)
+        }
+        every{
+            httpMock.connectionSuccess
+        } returns true
         /* Returned peer list is: [("127.0.0.22", 6887)] */
         torrent.announce(infohash, TorrentEvent.STARTED, 0, 0, 2703360)
+
+        every{
+            httpMock.httpGET("https://127.0.0.1:8082/announce",any())
+        } answers {
+            "d8:intervali360e5:peers6:".toByteArray(charset) + byteArrayOf(127,0,0,21,26, 233.toByte()) + "e".toByteArray(charset)
+        }
+        every{
+            httpMock.connectionSuccess
+        } returns true
         /* Returned peer list is: [("127.0.0.22", 6887), ("127.0.0.21", 6889)] */
         torrent.announce(infohash, TorrentEvent.REGULAR, 0, 81920, 2621440)
-
 
         assertThat(
             torrent.knownPeers(infohash),
@@ -199,21 +229,191 @@ class CourseTorrentTests {
         )
     }
     @Test
-    fun `b`(){
+    fun `peer list after announce with peer dictionary format`(){
+        val infohash = torrent.load(lame)
+
+        every{
+            httpMock.httpGET("https://127.0.0.1:8082/announce",any())
+        } answers {
+            "d8:intervali360e5:peersld7:peer id6:peerid2:ip10:127.0.0.224:porti6887eeee".toByteArray(charset)
+        }
+        every{
+            httpMock.connectionSuccess
+        } returns true
+        /* Returned peer list is: [("127.0.0.22", 6887)] */
+        torrent.announce(infohash, TorrentEvent.STARTED, 0, 0, 2703360)
+
+        every{
+            httpMock.httpGET("https://127.0.0.1:8082/announce",any())
+        } answers {
+            "d8:intervali360e5:peersld7:peer id7:peerid22:ip10:127.0.0.214:porti6889eeee".toByteArray(charset)
+        }
+        every{
+            httpMock.connectionSuccess
+        } returns true
+        /* Returned peer list is: [("127.0.0.22", 6887), ("127.0.0.21", 6889)] */
+        torrent.announce(infohash, TorrentEvent.REGULAR, 0, 81920, 2621440)
+
+        assertThat(
+            torrent.knownPeers(infohash),
+            anyElement(has(KnownPeer::ip, equalTo("127.0.0.22")) and has(KnownPeer::port, equalTo(6887)))
+        )
+        assertThat(
+            torrent.knownPeers(infohash),
+            anyElement(has(KnownPeer::ip, equalTo("127.0.0.21")) and has(KnownPeer::port, equalTo(6889)))
+        )
+        assertThat(
+            torrent.knownPeers(infohash), equalTo(torrent.knownPeers(infohash).distinct())
+        )
+    }
+    @Test
+    fun `announce urls properly shuffled`(){
+        val infohash = torrent.load(shuffleableTorrent)
+        every{
+            httpMock.httpGET("udp://tracker.opentrackr.org:1337/announce",any())
+        } answers {
+            "d14:failure reason6:stupide".toByteArray(charset)
+        }
+        every{
+            httpMock.httpGET("udp://open.stealth.si:80/announce",any())
+        } answers {
+            "d14:failure reason6:stupide".toByteArray(charset)
+        }
+        every{
+            httpMock.httpGET("udp://9.rarbg.me:2710/announce",any())
+        } answers {
+            "d8:intervali360e5:peers6:".toByteArray(charset) + byteArrayOf(127,0,0,22,26, 231.toByte()) + "e".toByteArray(charset)
+        }
+        every{
+            httpMock.connectionSuccess
+        } returns true
+        torrent.announce(infohash, TorrentEvent.REGULAR, 0, 45, 20045)
+        val announceList = torrent.announces(infohash)
+        assertThat(
+            announceList[1][0],
+            equalTo("udp://9.rarbg.me:2710/announce")
+        )
+    }
+    @Test
+    fun `scrape updates on connection failure`(){
+        val infohash = torrent.load(announceListTorrent)
+        every{
+            httpMock.connectionSuccess
+        } returns true
+        every{
+            httpMock.httpGET(any(),any())
+        } answers {
+            "d5:filesdee".toByteArray(charset)
+        }
+        every{
+            httpMock.httpGET("http://legittorrents.info:2710/scrape",any())
+        } answers {
+            "d5:flagsd20:min_request_intervali900ee5:filesd20:infohashinfohashinfod8:completei778e10:incompletei1e10:downloadedi18241eeee".toByteArray(charset)
+        }
+
+        torrent.scrape(infohash)
+        val oldScrape =torrent.trackerStats(infohash)["http://legittorrents.info:2710"]
+
+        every{
+            httpMock.connectionSuccess
+        } returns false
+
+        torrent.scrape(infohash)
+
+        assertThat(
+            torrent.trackerStats(infohash)["http://legittorrents.info:2710"],
+            equalTo(oldScrape).not()
+        )
 
     }
     @Test
-    fun `c`(){
+    fun `multiple scrapes from one torrent, then updates on failure`(){
+        val infohash = torrent.load(announceListTorrent)
+        every{
+            httpMock.connectionSuccess
+        } returns true
+        every{
+            httpMock.httpGET(any(),any())
+        } answers {
+            "d5:filesdee".toByteArray(charset)
+        }
+        every{
+            httpMock.httpGET("http://legittorrents.info:2710/scrape",any())
+        } answers {
+            "d5:flagsd20:min_request_intervali900ee5:filesd20:infohashinfohashinfod8:completei778e10:incompletei1e10:downloadedi18241eeee".toByteArray(charset)
+        }
+        every{
+            httpMock.httpGET("udp://62.138.0.158:6969/scrape",any())
+        } answers {
+            "d5:flagsd20:min_request_intervali900ee5:filesd20:infohashinfohashinfod8:completei74e10:incompletei12e10:downloadedi1241eeee".toByteArray(charset)
+        }
 
+        torrent.scrape(infohash)
+        val oldScrape  = torrent.trackerStats(infohash)["http://legittorrents.info:2710"]
+
+        every{
+            httpMock.httpGET("http://legittorrents.info:2710/scrape",any())
+        } answers {
+            "d5:filesdee".toByteArray(charset)
+        }
+        torrent.scrape(infohash)
+        assertThat(
+            torrent.trackerStats(infohash)["http://legittorrents.info:2710"],
+            equalTo(oldScrape).not()
+        )
     }
     @Test
-    fun `d`(){
+    fun `peer list grows on multiple announces`(){
+        val infohash = torrent.load(shuffleableTorrent)
+        every{
+            httpMock.connectionSuccess
+        } returns true
+        every{
+            httpMock.httpGET(any(),any())
+        } answers {
+            "d14:failure reason6:stupide".toByteArray(charset)
+        }
+        every{
+            httpMock.httpGET("udp://tracker.opentrackr.org:1337/announce",any())
+        } answers {
+            "d8:intervali360e5:peers6:".toByteArray(charset) + byteArrayOf(127,0,0,22,26, 231.toByte()) + "e".toByteArray(charset)
+        }
+        torrent.announce(infohash, TorrentEvent.STARTED, 0, 0, 0)
 
+        //Now this tracker no longer works, but we still want to keep the peer
+        every{
+            httpMock.httpGET("udp://tracker.opentrackr.org:1337/announce",any())
+        } answers {
+            "d14:failure reason6:stupide".toByteArray(charset)
+        }
+        every{
+            httpMock.httpGET("udp://open.stealth.si:80/announce",any())
+        } answers {
+            "d8:intervali360e5:peers6:".toByteArray(charset) + byteArrayOf(127,0,0,21,26, 233.toByte()) + "e".toByteArray(charset)
+        }
+
+        torrent.announce(infohash, TorrentEvent.STARTED, 0, 0, 0)
+        assertThat(
+            torrent.knownPeers(infohash),
+            anyElement(has(KnownPeer::ip, equalTo("127.0.0.22")) and has(KnownPeer::port, equalTo(6887)))
+        )
+        assertThat(
+            torrent.knownPeers(infohash),
+            anyElement(has(KnownPeer::ip, equalTo("127.0.0.21")) and has(KnownPeer::port, equalTo(6889)))
+        )
     }
     @Test
-    fun `e`(){
-
+    fun `all announces fail`(){
+        val infohash = torrent.load(lame)
+        every {
+            httpMock.connectionSuccess
+        } returns false
+        every {
+            httpMock.httpGET(any(),any())
+        } answers {
+            "connection fail"
+        }
+        assertThrows<TrackerException> { torrent.announce(infohash, TorrentEvent.STARTED,0,0,0) }
     }
-
 
 }

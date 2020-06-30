@@ -11,23 +11,12 @@ class PeerStorage @Inject constructor(
     @peerStorage private val peerStorage: SecureStorage
 ) : Peer {
     override fun addPeers(infohash: String, peerData: List<Any>) {
-        peerStorage.write(infohash.toByteArray(), Conversion.toByteArray(peerData) as ByteArray)
+        peerStorage.write(infohash.toByteArray(Charsets.UTF_8), Conversion.toByteArray(peerData) as ByteArray)
     }
 
     override fun getPeers(infohash: String): List<Any>? {
-        val peers = peerStorage.read(infohash.toByteArray()) ?: return null
+        val peers = peerStorage.read(infohash.toByteArray(Charsets.UTF_8)) ?: return null
         return Conversion.fromByteArray(peers) as List<Any>
     }
 
-    override fun invalidatePeer(infohash: String, peerId: String) {
-        val peers = peerStorage.read(infohash.toByteArray()) as Map<String, Any>
-        if (peers != null) {
-            peerStorage.write(infohash.toByteArray(), Conversion.toByteArray(peers.minus(peerId)) as ByteArray)
-        }
-    }
-
-    override fun getPeersList(infohash: String): List<Any>? {
-        val peers = peerStorage.read(infohash.toByteArray()) ?: return null
-        return (Conversion.fromByteArray(peers) as List<Any>) //TODO CHECK IF THIS WORKS
-    }
 }

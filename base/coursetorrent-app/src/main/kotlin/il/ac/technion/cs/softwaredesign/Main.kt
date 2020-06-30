@@ -46,7 +46,7 @@ fun main() {
     request_params += "&" + URLEncoder.encode("event", encoding) + "=" + URLEncoder.encode("0", encoding)
 
     //var announce_list = listOf(listOf("http://legittorrents.info:2710/announce"))
-    var announce_list = listOf(listOf("http://bttracker.debian.org:6969/announce"))
+    var announce_list = listOf(listOf("http://bttracker.debian.org:6969/scrape"))
 
     announce_list = announce_list.map { list -> list.shuffled(kotlin.random.Random(123)) }
     for (announce_tier in announce_list) {
@@ -64,9 +64,9 @@ fun main() {
                     println(data.toString(Charsets.UTF_8))
                     val announceResponse = Bencoding.DecodeObjectM(data) ?: throw IllegalArgumentException()
                     println(announceResponse)
-                    val peers2: ByteArray = announceResponse["peers"] as ByteArray
+                    /*val peers2: ByteArray = announceResponse["peers"] as ByteArray
                     println(peers2.toString())
-                    if (Bencoding.DecodeObject(peers2) is Map<*, *>) {
+                    if (false){//Bencoding.DecodeObject(peers2) is Map<*, *>) {
                         //println(peers2.toString())
                     } else {
                         val segmentedPeerList = peers2.asList().chunked(6)
@@ -80,7 +80,7 @@ fun main() {
                         }
                         //println(knownPeersList)
 
-                    }
+                    }*/
                     //println(InetAddress.getByAddress((announceResponse["peers"].toString().toByteArray()).take(4).toByteArray()))
                     //val port_bytes = (announceResponse["peers"] as String).toByteArray()
                     //println(port_bytes.get(4).toInt()*256 + port_bytes.get(5).toInt())
